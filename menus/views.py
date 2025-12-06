@@ -2,6 +2,7 @@ from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.permissions import IsAdminUser
 from .models import Place, MenuItem, Review, MenuItemReviewMention, MenuItemReviewSummary
 from .serializers import (
     PlaceSerializer,
@@ -63,6 +64,7 @@ class ReviewViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
+    permission_classes = [IsAdminUser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['place', 'rating', 'language']
     search_fields = ['text', 'author_name']
@@ -77,6 +79,7 @@ class MenuItemReviewMentionViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = MenuItemReviewMention.objects.all()
     serializer_class = MenuItemReviewMentionSerializer
+    permission_classes = [IsAdminUser]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = ['menu_item', 'review']
     ordering_fields = ['relevance_score']
@@ -90,6 +93,7 @@ class MenuItemReviewSummaryViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = MenuItemReviewSummary.objects.all()
     serializer_class = MenuItemReviewSummarySerializer
+    permission_classes = [IsAdminUser]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['last_updated', 'sentiment_score']
     ordering = ['-last_updated']
