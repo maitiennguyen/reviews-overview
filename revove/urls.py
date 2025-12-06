@@ -20,4 +20,6 @@ from django.urls import path, include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('menus.urls')),
+    # Admin-only internal endpoints (protected by IsAdminUser on viewsets)
+    path('internal/', include('menus.internal_urls')),
 ]
