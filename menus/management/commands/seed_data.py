@@ -8,7 +8,7 @@ class Command(BaseCommand):
         jam, _ = Place.objects.get_or_create(
             name="Jam!",
             defaults={
-                "google_place_id": "fake-jam-id",
+                "google_place_id": "ChIJxcqRm1BERVMRLOVS00TNMAw",
                 "address": "25 W Main St, Bozeman, MT 59715",
             },
         )
@@ -24,7 +24,7 @@ class Command(BaseCommand):
         bbbb, _ = Place.objects.get_or_create(
             name="Backcountry Burger Bar",
             defaults={
-                "google_place_id": "fake-backcountry-id",
+                "google_place_id": "ChIJh81w7VBERVMRJjPt8qyBwtE",
                 "address": "125 W Main St, Bozeman, MT 59715",
             },
         )
@@ -35,7 +35,7 @@ class Command(BaseCommand):
         treeline, _ = Place.objects.get_or_create(
             name="Treeline Coffee Roasters",
             defaults={
-                "google_place_id": "fake-treeline-id",
+                "google_place_id": "ChIJNV-wnUJERVMRi-Dvs79s9CM",
                 "address": "624 N Broadway Ave, Bozeman, MT 59715",
             },
         )
