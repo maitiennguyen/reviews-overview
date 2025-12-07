@@ -1,6 +1,6 @@
 # Copilot Instructions for revove
 
-**revove** analyzes Google Reviews for Bozeman restaurants and generates AI-powered menu item summaries.
+**revove** analyzes Google Reviews for Bozeman restaurants and generates AI-powered place-level "what to order" recommendations derived from reviews and place metadata.
 
 ## Project Architecture
 
@@ -12,19 +12,17 @@ revove is a Django REST Framework application with a PostgreSQL backend:
 
 ### Core Data Models (`menus/models.py`)
 
-Five interconnected models represent the problem space:
+Current models (after the recent pivot) focus on place-level insights:
 
-1. **Place**: Restaurants/cafés (google_place_id, rating, location)
-2. **MenuItem**: Menu items owned by a Place
-3. **Review**: Google reviews linked to a Place
-4. **MenuItemReviewMention**: Maps reviews → menu items (with relevance_score)
-5. **MenuItemReviewSummary**: AI-generated summary (summary_text, sentiment_score, tags) - OneToOne with MenuItem
+1. **Place**: Restaurants/cafés (fields: `name`, `google_place_id`, `address`, `city`, `latitude`, `longitude`, `rating`, `user_ratings_total`, `last_synced`).
+2. **Review**: Google reviews linked to a `Place` (`place`, `google_review_id`, `author_name`, `rating`, `text`, `language`, `created_at`, `fetched_at`). Raw review records are for internal/admin use.
+3. **PlaceRecommendation**: AI-generated, place-level recommendations (1–3 per `Place`). Fields: `place` (FK), `text`, `rank` (1 = top), `confidence`, `source`, timestamps. Unique constraint: `(place, rank)`.
 
-**Pattern**: All models use `__str__()` methods for readable admin display. Foreign keys use `on_delete=models.CASCADE`. Timestamps use Django's `timezone` and `auto_now` where appropriate.
+Pattern: Models use `__str__()` for admin display; FKs use `on_delete=models.CASCADE`; timestamps use `auto_now_add`/`auto_now` where appropriate.
 
 ## Development Workflow
 
-### Setting up the environment
+# Setting up the environment
 
 ```bash
 # Install dependencies
@@ -43,6 +41,9 @@ python manage.py createsuperuser
 
 # Run server
 python manage.py runserver
+
+# Run tests (lightweight)
+DJANGO_SETTINGS_MODULE=revove.test_settings python manage.py test menus.tests.test_models menus.tests.test_api
 ```
 
 ### Key Commands
@@ -63,47 +64,24 @@ python manage.py runserver
 **Test a database query**:
 ```bash
 python manage.py shell
->>> from menus.models import Place, MenuItem
+>>> from menus.models import Place
 >>> Place.objects.all()
 ```
 
 ## API Development Guidelines
 
-**Current State**: No DRF endpoints yet (Phase 1 – Models only)
+**Current State**: Public API exposes `Place` endpoints with nested `recommendations`. Raw `Review` data and admin-processing endpoints live under the `internal/` router and are protected with `IsAdminUser`.
 
-**Next Steps** (in priority order):
+**Next Steps / Priorities**:
 
-1. **Create Serializers** (`menus/serializers.py`):
-   - PlaceSerializer, MenuItemSerializer, ReviewSerializer
-   - Nested: MenuItemReviewMentionSerializer, MenuItemReviewSummarySerializer
-   - Use `depth=1` for read-only nested relations
+1. Keep the public surface small: `Place` read-only endpoints only (list & detail). Include nested `PlaceRecommendation` and a `review_count` field in the `PlaceSerializer`.
+2. Maintain admin-only `Review` viewset under `menus/internal_urls.py` for raw data inspection and manual fixes.
+3. Implement the recommendation-generation pipeline (management command or scheduled job) that aggregates reviews per `Place` and calls an LLM to upsert `PlaceRecommendation` records (1–3 per place).
 
-2. **Create ViewSets** (`menus/views.py`):
-   ```python
-   from rest_framework import viewsets
-   from .serializers import PlaceSerializer
-   from .models import Place
-
-   class PlaceViewSet(viewsets.ModelViewSet):
-       queryset = Place.objects.all()
-       serializer_class = PlaceSerializer
-   ```
-
-3. **Register Routes** (`menus/urls.py`, then include in `revove/urls.py`):
-   ```python
-   from rest_framework.routers import DefaultRouter
-   from .views import PlaceViewSet
-
-   router = DefaultRouter()
-   router.register(r'places', PlaceViewSet)
-   urlpatterns = router.urls
-   ```
-
-**Expected Endpoints**:
-- `GET /places/` – List all places
-- `GET /places/<id>/` – Place details with menu items
-- `GET /menu-items/` – All menu items (with filtering by place)
-- `GET /menu-items/<id>/summary/` – AI summary for a menu item
+**Current Routes**:
+- `GET /api/places/` – List places (paginated) with nested `recommendations` and `review_count`.
+- `GET /api/places/<id>/` – Place detail with `recommendations`.
+- `GET /internal/reviews/` – Admin-only list of reviews (requires admin permission).
 
 ## Code Patterns & Conventions
 
@@ -117,12 +95,22 @@ python manage.py shell
 
 ### Django Admin Registration (`menus/admin.py`)
 
-Models are registered for admin access. Keep admin list_display clean:
+Register `Place`, `Review`, and `PlaceRecommendation` for admin access. Keep list displays focused; examples:
 ```python
-@admin.register(MenuItem)
-class MenuItemAdmin(admin.ModelAdmin):
-    list_display = ('name', 'place', 'category', 'is_active')
-    list_filter = ('place', 'category', 'is_active')
+@admin.register(Place)
+class PlaceAdmin(admin.ModelAdmin):
+   list_display = ('name', 'city', 'rating', 'user_ratings_total')
+   search_fields = ('name', 'address')
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+   list_display = ('place', 'author_name', 'rating', 'created_at')
+   list_filter = ('rating', 'language')
+
+@admin.register(PlaceRecommendation)
+class PlaceRecommendationAdmin(admin.ModelAdmin):
+   list_display = ('place', 'rank', 'text', 'confidence', 'last_updated')
+   list_filter = ('source',)
 ```
 
 ### Database
@@ -133,44 +121,45 @@ class MenuItemAdmin(admin.ModelAdmin):
 
 ## Upcoming Integrations (Future Phases)
 
-### Phase 2: Google Reviews API Integration
+### Phase 2: Google Reviews Sync
 
-Build a management command (`menus/management/commands/sync_google_reviews.py`):
-- Fetch place details via Google Places API
-- Fetch reviews via Google Reviews API
-- Store/update Review model records
-- Update Place.last_synced timestamp
+The project already includes `menus/management/commands/sync_google_reviews.py` which calls the Google Places API (v1) to update `Place` metadata and save available reviews into `Review` records. This command reads `GOOGLE_API_KEY` from the environment/settings.
 
-### Phase 3: Review Matching & AI Summarization
+### Phase 3: Recommendation Generation (AI)
 
-Algorithms to implement:
+Goal: generate 1–3 short, actionable "what to order" recommendations per `Place` from aggregated reviews and place metadata.
 
-1. **Review → MenuItem Matching**: Populate MenuItemReviewMention
-   - Start with keyword matching (simple)
-   - Graduate to fuzzy string matching (fuzzywuzzy)
-   - Future: LLM classification or embeddings
+Approach:
+1. Aggregate up to N recent/high-quality reviews per place.
+2. Build a structured prompt containing place metadata and the selected reviews.
+3. Call an LLM (configurable client) to return 1–3 recommendation texts with optional confidence scores.
+4. Upsert `PlaceRecommendation` records with `rank` ordering.
 
-2. **AI Summarization**: Populate MenuItemReviewSummary
-   - Aggregate all reviews mentioning a menu item
-   - Call LLM (OpenAI/Claude) with structured prompt
-   - Extract summary_text, sentiment_score, tags
-   - Store in MenuItemReviewSummary
+Implementation options: a management command (`menus/management/commands/generate_recommendations.py`), a scheduled job (Celery beat), or a GitHub Action for on-demand runs.
 
 ### Phase 4: Automation
 
 - **Scheduler Options**: Celery + Redis, Cron job, GitHub Action, Railway scheduled job
-- **Weekly Tasks**: Refresh reviews, re-run mention detection, regenerate summaries
+- **Weekly Tasks**: Refresh reviews, regenerate recommendations, and optionally re-run confidence calibration
 
 ## Important Notes
 
-- **Settings**: Debug mode is ON (settings.py) – turn OFF before production
-- **CORS**: Enabled via corsheaders middleware for future frontend consumption
-- **Branch**: Currently on `feature/place-menuitem-setup`
-- **Seed Data**: Example places (Jam!, Backcountry Burger Bar, Treeline Coffee) are in database
-- **No Authentication Yet**: DRF defaults allow unauthenticated access – add TokenAuthentication or JWT later
+- **Settings**: `DEBUG = True` in development settings — turn OFF and secure secrets before production.
+- **CORS**: corsheaders enabled for development; restrict origins in production.
+- **Branch**: Current working branch: `feature/place-menuitem-setup`.
+- **Seed Data**: `menus/management/commands/seed_data.py` seeds three Bozeman places (Jam!, Backcountry Burger Bar, Treeline Coffee Roasters).
+- **Sync**: `menus/management/commands/sync_google_reviews.py` exists and requires a valid `GOOGLE_API_KEY` with Places access.
+- **Tests**: Lightweight unit tests were added for `PlaceRecommendation` and `Place` API. For local runs without Postgres privileges, use the test settings:
+
+```bash
+DJANGO_SETTINGS_MODULE=revove.test_settings python manage.py test menus.tests.test_models menus.tests.test_api
+```
+
+- **Security**: Public API surface intentionally minimal (places + recommendations). Raw review data remains behind admin-only endpoints (`/internal/`).
 
 ## Useful Resources
 
 - Django Docs: https://docs.djangoproject.com/en/6.0/
 - DRF Docs: https://www.django-rest-framework.org/
-- PostgreSQL with Django: https://docs.djangoproject.com/en/6.0/ref/databases/#postgresql-notes
+- Google Places API: https://developers.google.com/maps/documentation/places
+
