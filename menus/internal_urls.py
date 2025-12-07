@@ -4,8 +4,8 @@ from . import views
 
 router = DefaultRouter()
 router.register(r'reviews', views.ReviewViewSet, basename='internal-review')
-router.register(r'mentions', views.MenuItemReviewMentionViewSet, basename='internal-mention')
-router.register(r'summaries', views.MenuItemReviewSummaryViewSet, basename='internal-summary')
+# Keep only admin/internal endpoints that make sense for debugging raw data.
+# Mentions and per-menu-item summaries are removed in the new project direction.
 
 urlpatterns = [
     # Admin-only internal endpoints for debugging and maintenance

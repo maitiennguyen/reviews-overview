@@ -13,7 +13,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # Prefer a Django settings value, fall back to environment variable
-        api_key = getattr(settings, 'GOOGLE_API_KEY', None) or os.getenv('GOOGLE_API_KEY')
+        api_key = os.getenv('GOOGLE_API_KEY')
 
         if not api_key:
             self.stdout.write(self.style.ERROR("❌ Missing GOOGLE_API_KEY in settings or environment"))

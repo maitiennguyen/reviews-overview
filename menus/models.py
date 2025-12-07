@@ -16,17 +16,6 @@ class Place(models.Model):
         return self.name
 
 
-class MenuItem(models.Model):
-    place = models.ForeignKey(Place, on_delete=models.CASCADE, related_name='menu_items')
-    name = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    category = models.CharField(max_length=100, blank=True)
-    is_active = models.BooleanField(default=True)
-
-    def __str__(self):
-        return f"{self.name} ({self.place.name})"
-
-
 class Review(models.Model):
     place = models.ForeignKey(Place, on_delete=models.CASCADE, related_name='reviews')
     google_review_id = models.CharField(max_length=255, unique=True)
@@ -41,21 +30,22 @@ class Review(models.Model):
         return f"Review for {self.place.name} ({self.rating}★)"
 
 
-class MenuItemReviewMention(models.Model):
-    menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name='mentions')
-    review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name='menu_item_mentions')
-    relevance_score = models.FloatField(default=1.0)
+class PlaceRecommendation(models.Model):
+    """AI-generated place-level recommendation (1-3 per Place).
 
-    class Meta:
-        unique_together = ('menu_item', 'review')
-
-
-class MenuItemReviewSummary(models.Model):
-    menu_item = models.OneToOneField(MenuItem, on_delete=models.CASCADE, related_name='ai_summary')
-    summary_text = models.TextField(blank=True)
-    sentiment_score = models.FloatField(null=True, blank=True)
-    tags = models.JSONField(default=list, blank=True)
+    Stores a short recommendation text and an optional confidence score.
+    """
+    place = models.ForeignKey(Place, on_delete=models.CASCADE, related_name='recommendations')
+    text = models.CharField(max_length=255)
+    rank = models.PositiveSmallIntegerField(default=1)  # 1 = top recommendation
+    confidence = models.FloatField(null=True, blank=True)
+    source = models.CharField(max_length=50, default='ai')
+    created_at = models.DateTimeField(auto_now_add=True)
     last_updated = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        unique_together = ('place', 'rank')
+        ordering = ['place', 'rank']
+
     def __str__(self):
-        return f"AI Summary for {self.menu_item.name}"
+        return f"{self.place.name} - #{self.rank}: {self.text}"
