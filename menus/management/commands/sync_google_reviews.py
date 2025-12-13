@@ -90,16 +90,26 @@ class Command(BaseCommand):
             if Review.objects.filter(google_review_id=google_review_id).exists():
                 continue
 
+            text_obj = r.get("text") or {}
+            text_val = text_obj.get("text")
+            if not text_val:
+                # Skip reviews with no text to avoid violating NOT NULL constraint
+                continue
+
+            publish_time = r.get("publishTime")
+            try:
+                created_dt = timezone.datetime.fromisoformat(publish_time.replace("Z", "+00:00")) if publish_time else timezone.now()
+            except Exception:
+                created_dt = timezone.now()
+
             Review.objects.create(
                 place=place,
                 google_review_id=google_review_id,
                 author_name=r.get("authorAttribution", {}).get("displayName"),
                 rating=r.get("rating"),
-                text=r.get("text", {}).get("text"),
+                text=text_val,
                 language="en",  # New API doesn’t always return language
-                created_at=timezone.datetime.fromisoformat(
-                    r["publishTime"].replace("Z", "+00:00")
-                ),
+                created_at=created_dt,
             )
 
             saved_count += 1
