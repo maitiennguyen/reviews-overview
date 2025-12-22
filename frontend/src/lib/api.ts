@@ -17,14 +17,6 @@ async function fetchJSON(path: string, init?: RequestInit) {
 }
 
 // Types that roughly match your DRF serializers
-export type PlaceRecommendation = {
-  id: number;
-  text: string;
-  rank: number;
-  confidence: number | null;
-  source: string;
-};
-
 export type Place = {
   id: number;
   name: string;
@@ -33,11 +25,23 @@ export type Place = {
   rating: number | null;
   user_ratings_total: number | null;
   review_count: number;
-  recommendations: PlaceRecommendation[];
+};
+
+export type Review = {
+  id: number;
+  place: number;
+  place_name: string;
+  google_review_id: string;
+  author_name: string;
+  rating: number;
+  text: string;
+  language: string;
+  created_at: string;
+  fetched_at: string;
 };
 
 // Generic paginated shape
-type Paginated<T> = { results: T[] };
+type Paginated<T> = { results: T[]; next?: string | null; previous?: string | null; count?: number };
 
 // Shared fetch + unwrap
 async function fetchList<T>(path: string): Promise<T[]> {
@@ -54,6 +58,37 @@ export function fetchPlaces(): Promise<Place[]> {
   return fetchList<Place>('/places/');
 }
 
+export function fetchPlacesPage(page = 1): Promise<Paginated<Place>> {
+  const params = new URLSearchParams({ page: String(page) });
+  return fetchJSON(`/places/?${params.toString()}`);
+}
+
 export function fetchPlace(id: string | number): Promise<Place> {
   return fetchJSON(`/places/${id}/`);
+}
+
+export function searchPlacesByName(query: string): Promise<Place[]> {
+  const params = new URLSearchParams({ search: query });
+  return fetchList<Place>(`/places/?${params.toString()}`);
+}
+
+export function searchReviews(
+  query: string,
+  placeId?: number | string,
+  placeName?: string,
+  placeNames?: string[]
+): Promise<Review[]> {
+  const params = new URLSearchParams({ q: query });
+  if (placeId) {
+    params.set('place', String(placeId));
+  }
+  if (placeName) {
+    params.append('place_name', placeName);
+  }
+  if (placeNames && placeNames.length > 0) {
+    placeNames.forEach((name) => {
+      if (name.trim()) params.append('place_name', name.trim());
+    });
+  }
+  return fetchList<Review>(`/search/reviews/?${params.toString()}`);
 }

@@ -6,8 +6,9 @@ app_name = 'menus'
 
 router = DefaultRouter()
 router.register(r'places', views.PlaceViewSet, basename='place')
-# Public API surface exposes only places (with nested recommendations) and keeps raw reviews internal.
-# Intentionally do not register review or internal-processing viewsets here.
+router.register(r'search/reviews', views.ReviewSearchViewSet, basename='review-search')
+# Public API surface exposes places and keyword-based review search.
+# Raw review listings remain internal/admin-only.
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -4,7 +4,6 @@ __pycache__/
 *.pyo
 *.egg-info/
 .env
-ARCHITECTURE.md
 llama-models/
 .DS_Store
 node_modules/
