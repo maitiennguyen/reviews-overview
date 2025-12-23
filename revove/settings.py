@@ -12,10 +12,31 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
+
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+
+def _get_bool_env(key: str, default: bool = False) -> bool:
+    val = os.getenv(key)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def _parse_db_url(url: str):
+    parsed = urlparse(url)
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": parsed.path.lstrip("/"),
+        "USER": parsed.username,
+        "PASSWORD": parsed.password,
+        "HOST": parsed.hostname,
+        "PORT": parsed.port or "",
+    }
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,12 +46,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-73fx+wfxf)2&#a(^^*=h4e#bwpya@nde_ocj)xhhl!iuq7jhvq'
+SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _get_bool_env('DEBUG', default=False)
 
-ALLOWED_HOSTS = []
+raw_allowed_hosts = os.getenv('ALLOWED_HOSTS', '')
+ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(',') if h.strip()]
 
 
 # Application definition
@@ -82,16 +104,20 @@ WSGI_APPLICATION = 'revove.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'revove_db',
-        'USER': 'mainguyen',
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': 'localhost',
-        'PORT': '5432',
+db_url = os.getenv('DATABASE_URL')
+if db_url:
+    DATABASES = {'default': _parse_db_url(db_url)}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'revove_db'),
+            'USER': os.getenv('DB_USER', 'mainguyen'),
+            'PASSWORD': os.getenv('DB_PASSWORD'),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+        }
     }
-}
 
 
 # Password validation
@@ -129,9 +155,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # CORS Configuration
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = _get_bool_env('CORS_ALLOW_ALL_ORIGINS', default=False)
+raw_cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if raw_cors_origins:
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors_origins.split(',') if o.strip()]
 
 # Django REST Framework Configuration
 REST_FRAMEWORK = {
@@ -154,3 +184,12 @@ REST_FRAMEWORK = {
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Security (prefer enabling in production via env)
+SECURE_SSL_REDIRECT = _get_bool_env('SECURE_SSL_REDIRECT', default=False)
+SESSION_COOKIE_SECURE = _get_bool_env('SESSION_COOKIE_SECURE', default=False)
+CSRF_COOKIE_SECURE = _get_bool_env('CSRF_COOKIE_SECURE', default=False)
+
+raw_csrf_trusted = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+if raw_csrf_trusted:
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf_trusted.split(',') if o.strip()]
